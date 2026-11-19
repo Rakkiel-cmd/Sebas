@@ -1,0 +1,471 @@
+/* Variables de color del tema oscuro industrial y configuración base */
+:root {
+    --bg: #0e1114;
+    --pn: #171b20;
+    --p2: #1f252c;
+    --ln: #2e3640;
+    --tx: #dfe6ec;
+    --mu: #8a97a3;
+    --yl: #ffc400;
+    --cy: #22d3ee;
+    --rd: #ff3b30;
+    --gn: #2ee66b;
+    color-scheme: dark;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px)
+}
+
+html {
+    scroll-padding-top: env(safe-area-inset-top, 0px)
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: inherit
+}
+
+html,
+body {
+    height: 100%;
+    margin: 0
+}
+
+body {
+    background: var(--bg);
+    color: var(--tx);
+    font: 13px/1.4 "Segoe UI", system-ui, Roboto, Arial, sans-serif;
+    overflow-x: hidden
+}
+
+/* Contenedor principal en grid: cabecera fija y cuerpo expandible */
+.app {
+    height: 100%;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr)
+}
+
+/* Cabecera superior con título, KPIs y botón E-STOP */
+header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    background: linear-gradient(#262d35, #171b20);
+    border-bottom: 3px solid var(--yl)
+}
+
+h1 {
+    margin: 0;
+    font: 700 15px/1.2 "Segoe UI", sans-serif;
+    color: var(--yl)
+}
+
+h1 small {
+    display: block;
+    color: var(--cy);
+    font-weight: 500;
+    font-size: 11px
+}
+
+.kpis {
+    display: flex;
+    gap: 8px;
+    flex: 1;
+    flex-wrap: wrap;
+    justify-content: center
+}
+
+.kpi {
+    background: #0a0d10;
+    border: 1px solid var(--ln);
+    border-radius: 4px;
+    padding: 4px 12px;
+    min-width: 130px
+}
+
+.kpi span {
+    font-size: 11px;
+    color: var(--mu)
+}
+
+.kpi b {
+    display: block;
+    font: 700 19px Consolas, "Courier New", monospace;
+    color: var(--cy)
+}
+
+.bar {
+    height: 4px;
+    background: #252b32;
+    margin-top: 2px
+}
+
+.bar i {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: var(--gn);
+    transition: width .4s
+}
+
+/* Botón circular de parada de emergencia */
+#estop {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    border: 5px solid var(--yl);
+    background: radial-gradient(circle at 35% 30%, #ff7468, #c4160c 60%, #80100a);
+    color: #fff;
+    font: 700 10px sans-serif;
+    cursor: pointer;
+    box-shadow: 0 4px 0 #5a0904
+}
+
+#estop.on {
+    transform: translateY(3px);
+    box-shadow: 0 1px 0 #5a0904;
+    filter: brightness(.7)
+}
+
+/* Distribución principal: panel lateral (340px) + escenario 3D */
+main {
+    display: grid;
+    grid-template-columns: 340px minmax(0, 1fr);
+    min-height: 0
+}
+
+aside {
+    overflow: auto;
+    background: var(--pn);
+    border-right: 1px solid var(--ln);
+    padding: 10px
+}
+
+/* Tarjetas de cada paso del protocolo y sus estados (active / done) */
+.step {
+    background: var(--p2);
+    border: 1px solid var(--ln);
+    border-left: 4px solid var(--ln);
+    border-radius: 4px;
+    padding: 8px 10px;
+    margin-bottom: 8px
+}
+
+.step.active {
+    border-left-color: var(--yl)
+}
+
+.step.done {
+    border-left-color: var(--gn)
+}
+
+.step h3 {
+    margin: 0 0 6px;
+    font-size: 13px;
+    display: flex;
+    gap: 8px;
+    align-items: center
+}
+
+.step em {
+    margin-left: auto;
+    font-style: normal;
+    font-size: 11px;
+    color: var(--mu)
+}
+
+.step.done em {
+    color: var(--gn)
+}
+
+.step.active em {
+    color: var(--yl)
+}
+
+.n {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #2e3640;
+    display: grid;
+    place-items: center;
+    font-size: 11px;
+    flex: none
+}
+
+.active .n {
+    background: var(--yl);
+    color: #000
+}
+
+.done .n {
+    background: var(--gn);
+    color: #000
+}
+
+.chk {
+    display: flex;
+    gap: 8px;
+    padding: 3px 0;
+    cursor: pointer
+}
+
+/* Botones de acción y variantes de estado */
+.btn {
+    background: #2b333c;
+    color: var(--tx);
+    border: 1px solid #435060;
+    border-radius: 4px;
+    padding: 7px 10px;
+    cursor: pointer;
+    font: 600 12px "Segoe UI", sans-serif;
+    margin: 4px 4px 0 0
+}
+
+.btn:hover {
+    border-color: var(--cy)
+}
+
+.btn:focus-visible,
+#estop:focus-visible,
+input:focus-visible {
+    outline: 2px solid var(--cy);
+    outline-offset: 2px
+}
+
+.pri {
+    background: var(--yl);
+    color: #111;
+    border-color: #e0ac00
+}
+
+.cyb {
+    background: #0e7490;
+    border-color: var(--cy)
+}
+
+.warn {
+    border-color: var(--rd);
+    color: #ff9d96
+}
+
+.btn.sel {
+    background: var(--cy);
+    color: #000
+}
+
+/* Controles deslizantes de ejes e indicador de contacto */
+.row {
+    margin: 4px 0
+}
+
+.row label {
+    display: block;
+    font-size: 12px
+}
+
+.row b {
+    color: var(--cy);
+    font-family: Consolas, monospace
+}
+
+input[type=range] {
+    width: 100%;
+    accent-color: var(--cy)
+}
+
+#tc {
+    font: 12px Consolas, monospace;
+    color: var(--mu);
+    margin: 2px 0
+}
+
+#tc.ok {
+    color: var(--gn)
+}
+
+.mu {
+    color: var(--mu);
+    font-size: 12px;
+    margin-top: 4px
+}
+
+/* Área del visor 3D, HUD superpuesto, alertas y modal */
+.stage {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
+    min-height: 0
+}
+
+.view {
+    position: relative;
+    min-height: 0;
+    overflow: hidden
+}
+
+.view canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block
+}
+
+.hud {
+    position: absolute;
+    left: 10px;
+    top: 10px;
+    font: 12px/1.5 Consolas, monospace;
+    white-space: pre;
+    background: rgba(5, 8, 10, .78);
+    border: 1px solid var(--cy);
+    color: var(--cy);
+    padding: 6px 9px;
+    border-radius: 4px;
+    z-index: 3;
+    pointer-events: none
+}
+
+#toast {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 92%;
+    background: var(--rd);
+    color: #fff;
+    padding: 9px 14px;
+    border-radius: 4px;
+    font-weight: 700;
+    display: none;
+    z-index: 4;
+    text-align: center
+}
+
+#toast.ok {
+    background: #0f7a3a
+}
+
+#flash {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: rgba(255, 40, 30, 0);
+    transition: background .5s
+}
+
+#flash.on {
+    background: rgba(255, 40, 30, .38);
+    transition: none
+}
+
+/* Modal de colisión o fin de ciclo */
+.ov {
+    position: absolute;
+    inset: 0;
+    display: none;
+    place-items: center;
+    background: rgba(0, 0, 0, .65);
+    padding: 14px;
+    z-index: 5
+}
+
+.ov.show {
+    display: grid
+}
+
+.card {
+    max-width: 440px;
+    background: var(--pn);
+    border: 3px solid var(--rd);
+    border-radius: 6px;
+    padding: 18px;
+    text-align: center
+}
+
+.card.ok {
+    border-color: var(--gn)
+}
+
+.card h2 {
+    margin: 0 0 8px;
+    font-size: 17px
+}
+
+.cost {
+    font: 700 30px Consolas, monospace;
+    color: var(--rd);
+    margin: 8px 0
+}
+
+/* Barra inferior y consola de registro de eventos */
+.foot {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    padding: 6px 10px;
+    background: var(--pn);
+    border-top: 1px solid var(--ln)
+}
+
+.log {
+    flex: 1;
+    min-width: 220px;
+    height: 50px;
+    overflow: auto;
+    font: 11px Consolas, monospace;
+    color: var(--mu)
+}
+
+.log .e {
+    color: #ff8a82
+}
+
+.log .ok {
+    color: var(--gn)
+}
+
+.log .i {
+    color: var(--cy)
+}
+
+/* Diseño adaptable para pantallas estrechas / móviles */
+@media(max-width:860px) {
+
+    html,
+    body,
+    .app {
+        height: auto
+    }
+
+    main {
+        display: flex;
+        flex-direction: column
+    }
+
+    .stage {
+        order: -1;
+        display: block
+    }
+
+    .view {
+        height: 58vh;
+        min-height: 340px
+    }
+
+    aside {
+        border-right: 0;
+        overflow: visible
+    }
+}
+
+/* Desactiva transiciones si el usuario prefiere movimiento reducido */
+@media(prefers-reduced-motion:reduce) {
+    * {
+        transition: none !important
+    }
+}

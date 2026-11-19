@@ -1,0 +1,217 @@
+(() => {
+    // Atajos de DOM, interpolación lineal (L), easing cúbico (ez) y formato de moneda
+    const $ = i => document.getElementById(i), L = (a, b, t) => a + (b - a) * t, ez = t => 1 - Math.pow(1 - t, 3), usd = n => "$" + n.toLocaleString("en-US") + " USD";
+    // Escala (40 px/mm), altura del eje del husillo (AY), cara frontal (FACE), plato (CH) y radio base (R0)
+    const U = 40, AY = 2.8, FACE = 1.3, CH = -2.7, R0 = .75;
+    // Variables globales de estado de la simulación, física y animaciones
+    let S, T, errs, saved, pen, cyc, estop, w, wt, ej, cutR, cutLen, shake, redUntil, after, tw = [], mtm, pi = 0;
+
+    /* ---------- Escena ---------- */
+    // Renderizador WebGL, cámara orbital e iluminación del taller
+    const view = $("view"), renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    view.prepend(renderer.domElement);
+    const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0e1114); scene.fog = new THREE.Fog(0x0e1114, 26, 60);
+    const cam = new THREE.PerspectiveCamera(45, 1, .1, 100); cam.position.set(3.5, 5.8, 11.5);
+    const ctl = new THREE.OrbitControls(cam, renderer.domElement); ctl.target.set(0, 2.3, .3); ctl.enableDamping = true; ctl.maxPolarAngle = Math.PI * .495; ctl.minDistance = 4; ctl.maxDistance = 28;
+    scene.add(new THREE.HemisphereLight(0xbcd2e8, 0x1a1d22, .6));
+    const sun = new THREE.DirectionalLight(0xfff1dc, .95); sun.position.set(6, 12, 8); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+    Object.assign(sun.shadow.camera, { left: -10, right: 10, top: 8, bottom: -8, near: 1, far: 35 }); scene.add(sun);
+    const spot = new THREE.SpotLight(0xdbeeff, 1.1, 30, .55, .5); spot.position.set(-4, 9, 4); spot.target.position.set(0, 2.5, 0); scene.add(spot, spot.target);
+    const lamp = new THREE.PointLight(0xffa040, 0, 5); scene.add(lamp);
+    const redL = new THREE.PointLight(0xff2020, 0, 9); scene.add(redL);
+
+    // Constructores rápidos de materiales metálicos, cajas y cilindros
+    const M = (c, m = .7, r = .45) => new THREE.MeshStandardMaterial({ color: c, metalness: m, roughness: r });
+    const bx = (w, h, d, m, x, y, z, p) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); o.castShadow = o.receiveShadow = true; (p || scene).add(o); return o };
+    const cy = (rt, rb, h, m, x, y, z, p) => { const g = new THREE.CylinderGeometry(rt, rb, h, 32); g.rotateZ(Math.PI / 2); const o = new THREE.Mesh(g, m); o.position.set(x, y, z); o.castShadow = o.receiveShadow = true; (p || scene).add(o); return o };
+    const body = M(0x46525e, .5, .5), yel = M(0xffc400, .3, .5), chrome = M(0xcfd6dc, .95, .2), dark = M(0x2a2f35, .9, .35);
+
+    // Piso del taller, grilla y zona de seguridad amarilla
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), M(0x1b1f24, .1, .9)); floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+    const grid = new THREE.GridHelper(40, 40, 0x44505c, 0x2a3138); grid.position.y = .01; scene.add(grid);
+    [[0, -3.4, 14, .12], [0, 3.8, 14, .12], [-7, .2, .12, 7.4], [7, .2, .12, 7.4]].forEach(a => bx(a[2], .02, a[3], M(0xffc400, 0, .8), a[0], .02, a[1]));
+
+    // Bancada, guías cromadas y cabezal fijo del torno
+    bx(11, .8, 3, body, 0, .4, .2); bx(11, .35, 2.6, M(0x59636d, .6, .5), 0, .975, .2);
+    bx(11, .12, .18, chrome, 0, 1.21, -.35); bx(11, .12, .18, chrome, 0, 1.21, .95);
+    bx(2.4, 3, 2.2, body, -4.3, 2.65, .15); bx(2.45, .12, 2.25, yel, -4.3, 4.1, .15); bx(.06, .7, 1, M(0x22d3ee, 0, .3), -3.1, 3.3, .15).material.emissive = new THREE.Color(0x0a5566);
+    // Husillo giratorio, plato universal y 3 mordazas radiales
+    const sp = new THREE.Group(); sp.position.y = AY; scene.add(sp);
+    cy(1.35, 1.35, .6, dark, -3, 0, 0, sp); bx(.62, .12, .3, yel, -3, 1.36, 0, sp);
+    const jaws = []; for (let i = 0; i < 3; i++) { const g = new THREE.Group(); g.rotation.x = i * 2.0944; sp.add(g); jaws.push(bx(.45, .35, .42, M(0xb7c0c8, .9, .3), -2.5, 1.18, 0, g)) }
+    const setJ = r => jaws.forEach(j => j.position.y = r);
+    // Textura procedimental para diferenciar la parte en bruto de la mecanizada
+    function tex(c, l) { const k = document.createElement("canvas"); k.width = 128; k.height = 8; const g = k.getContext("2d"); g.fillStyle = c; g.fillRect(0, 0, 128, 8); g.fillStyle = l;[10, 50, 90].forEach(x => g.fillRect(x, 0, 4, 8)); return new THREE.CanvasTexture(k) }
+    const ug = new THREE.CylinderGeometry(1, 1, 1, 40, 1); ug.rotateZ(Math.PI / 2);
+    // Pieza de acero dividida en tramo en bruto (rough) y tramo desbastado (cut)
+    const wp = new THREE.Group(), rough = new THREE.Mesh(ug, new THREE.MeshStandardMaterial({ map: tex("#6f777e", "#aeb6bd"), metalness: .8, roughness: .5 })), cut = new THREE.Mesh(ug, new THREE.MeshStandardMaterial({ map: tex("#e3e9ed", "#ffffff"), metalness: .95, roughness: .15 }));
+    rough.castShadow = cut.castShadow = true; wp.add(rough, cut); sp.add(wp);
+    // Contrapunto (derecha) y carro longitudinal/transversal con portaherramienta
+    bx(1.8, .5, 1.5, body, 4.3, 1.52, .2); bx(1.2, 1.6, 1.1, body, 4.3, 2.57, .2); cy(.28, .28, 1.2, chrome, 3.1, AY, .2 - .2, null); cy(.05, .28, .3, dark, 2.35, AY, 0); cy(.3, .3, .15, dark, 5, AY, 0);
+    const car = new THREE.Group(); scene.add(car); bx(1.5, .3, 2.3, yel, 0, 1.42, .75, car); bx(1.4, .9, .2, body, 0, 1, 1.95, car);
+    const cs = new THREE.Group(); car.add(cs); bx(1.2, .15, 1.8, M(0x59636d, .6, .4), 0, 1.65, .55, cs); bx(.7, .95, .7, M(0x7a858f), 0, 2.17, .6, cs); bx(.22, .14, .8, dark, 0, 2.72, .55, cs);
+    bx(.24, .08, .24, M(0xffb300, .5, .3), 0, 2.76, .12, cs);
+
+    // Marcadores visuales: punta del inserto (probe), Cero Pieza (zm) y colisión (cm)
+    const glow = (c, r, o) => { const m = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 16), new THREE.MeshBasicMaterial({ color: c, transparent: o < 1, opacity: o, depthTest: false })); m.renderOrder = 9; return m };
+    const probe = glow(0xffc400, .08, 1); scene.add(probe);
+    const zm = new THREE.Group(), halo = glow(0x2ee66b, .26, .28); zm.add(glow(0x2ee66b, .11, 1), halo); zm.visible = false; scene.add(zm);
+    const cm = glow(0xff2020, .3, .6); cm.visible = false; scene.add(cm);
+
+    // Sistema de partículas para simular chispas/virutas durante el corte
+    const NP = 200, pp = new Float32Array(NP * 3), pv = new Float32Array(NP * 3), pl = new Float32Array(NP), pg = new THREE.BufferGeometry();
+    for (let i = 0; i < NP; i++)pp[3 * i + 1] = -50;
+    pg.setAttribute("position", new THREE.BufferAttribute(pp, 3));
+    const pts = new THREE.Points(pg, new THREE.PointsMaterial({ color: 0xffb347, size: .09, transparent: true, opacity: .95, depthWrite: false })); pts.frustumCulled = false; scene.add(pts);
+    function chip(dt) { let n = Math.ceil(dt * 120); while (n--) { const i = pi++ % NP, p = probe.position; pp[3 * i] = p.x; pp[3 * i + 1] = p.y; pp[3 * i + 2] = p.z; pv[3 * i] = (Math.random() - .3) * 1.5; pv[3 * i + 1] = 1.2 + Math.random() * 2.2; pv[3 * i + 2] = .8 + Math.random() * 2; pl[i] = .8 + Math.random() * .6 } }
+    function chips(dt) { for (let i = 0; i < NP; i++) { if (pl[i] <= 0) continue; pl[i] -= dt; if (pl[i] <= 0) { pp[3 * i + 1] = -50; continue } pv[3 * i + 1] -= 9 * dt; pp[3 * i] += pv[3 * i] * dt; pp[3 * i + 1] += pv[3 * i + 1] * dt; pp[3 * i + 2] += pv[3 * i + 2] * dt; if (pp[3 * i + 1] < .05) { pp[3 * i + 1] = .05; pv[3 * i + 1] *= -.25; pv[3 * i] *= .5; pv[3 * i + 2] *= .5 } } pg.attributes.position.needsUpdate = true }
+
+    /* ---------- Utilidades ---------- */
+    // Detección de contacto con el borde para G54 y colisión contra pieza/contrapunto
+    const touch = () => S.mounted && Math.abs(T.x - 30) <= 1.5 && Math.abs(T.z) <= 1.5;
+    const hits = () => (S.mounted && T.x < 29 && T.z < -.5) || (T.x < 12 && T.z > 35 && T.z < 96);
+    // Sincroniza coordenadas lógicas (T) con la posición 3D del carro y la interfaz
+    function apply() { const x = FACE + T.z / U, z = T.x / U; car.position.x = x; cs.position.z = z; probe.position.set(x, AY, z) }
+    function sync() { $("rx").value = T.x; $("rz").value = T.z; $("vx").textContent = T.x.toFixed(1); $("vz").textContent = T.z.toFixed(1); const t = touch(); $("tc").textContent = t ? "● CONTACTO CON EL BORDE" : "○ sin contacto"; $("tc").className = t ? "ok" : "" }
+    // Ajusta visualmente la longitud desbastada de la barra
+    function setCut(l) { cutLen = l; const rl = FACE - l - CH; rough.scale.set(rl, R0, R0); rough.position.x = CH + rl / 2; cut.visible = l > .001; if (l > .001) { cut.scale.set(l, cutR, cutR); cut.position.x = FACE - l / 2 } }
+    // Cola de animaciones, registro de eventos, notificaciones y actualización de KPIs/pasos
+    const tween = (d, f, e) => tw.push({ t: 0, d, f, e });
+    function log(m, c) { const d = document.createElement("div"); d.className = c || ""; d.textContent = new Date().toLocaleTimeString("es-PE", { hour12: false }) + " " + m; $("log").prepend(d); while ($("log").children.length > 40) $("log").lastChild.remove() }
+    let tt; function toast(m, ok) { const t = $("toast"); t.textContent = m; t.className = ok ? "ok" : ""; t.style.display = "block"; clearTimeout(tt); tt = setTimeout(() => t.style.display = "none", 4300) }
+    function flash() { const f = $("flash"); f.classList.add("on"); setTimeout(() => f.classList.remove("on"), 120) }
+    function danger(m, c) { errs++; saved += c || 0; pen += 5; toast("⚠ " + m); log(m + (c ? " · riesgo evitado ≈ " + usd(c) : ""), "e"); flash(); shake = .35; ui() }
+    function modal(ok, t, b, c, x, bt, fn) { $("card").className = "card" + (ok ? " ok" : ""); $("mt").textContent = t; $("mb").textContent = b; $("mc").textContent = c; $("mc").style.color = ok ? "var(--gn)" : "var(--rd)"; $("mx").textContent = x; $("mbtn").textContent = bt; $("mbtn").onclick = fn; $("ov").classList.add("show") }
+    function ui() {
+        const d = [S.epp, S.mounted && S.clamped, !!S.zero && !!S.rpm, S.mode === "done"], a = d.indexOf(false), n = d.filter(Boolean).length;
+        d.forEach((v, i) => { const e = $("s" + (i + 1)); e.className = "step" + (v ? " done" : i === a ? " active" : ""); e.querySelector("em").textContent = v ? "✔ Completo" : i === a ? "En curso" : "Pendiente" });
+        const sc = Math.max(0, Math.min(100, n * 25 - pen)); $("k1").textContent = sc + "%"; $("kb").style.width = sc + "%"; $("k2").textContent = errs; $("k3").textContent = usd(saved);
+        document.querySelectorAll("[data-r]").forEach(b => b.classList.toggle("sel", +b.dataset.r === S.rpm)); sync()
+    }
+
+    /* ---------- Estado ---------- */
+    // Reinicia toda la práctica a su estado inicial
+    function reset() {
+        tw = []; clearTimeout(mtm); S = { epp: false, mounted: false, clamped: false, zero: null, rpm: 0, mode: "idle" }; T = { x: 55, z: 60 }; errs = saved = pen = 0; cyc = null; estop = false; w = wt = 0; ej = null; shake = 0; redUntil = 0; after = {};
+        $("estop").classList.remove("on"); $("ov").classList.remove("show"); document.querySelectorAll("#s1 input").forEach(i => { i.checked = false; i.disabled = false });
+        sp.add(wp); wp.position.set(6, 1.2, 0); wp.rotation.set(0, 0, 0); wp.visible = false; setJ(1.18); cutR = .65; setCut(0); zm.visible = false; sp.rotation.x = 0; apply(); $("log").innerHTML = ""; log("Simulación lista. Comience con el Paso 1: EPP.", "i"); ui()
+    }
+    // Reconoce la alarma tras una colisión y devuelve el carro a posición segura
+    function ack() {
+        $("ov").classList.remove("show"); redUntil = 0; T = { x: 55, z: 60 }; cutR = .65; setCut(0);
+        if (after.eject) { sp.add(wp); wp.position.set(6, 1.2, 0); wp.rotation.set(0, 0, 0); wp.visible = false; setJ(1.18); S.mounted = S.clamped = false; ej = null }
+        if (after.rpmBad) S.rpm = 0; S.mode = "idle"; apply(); ui(); log("Alarma reconocida. Revise los parámetros y reintente.", "i")
+    }
+    // Dispara una colisión grave, calcula pérdidas evitadas y muestra el modal de emergencia
+    function crash(msg, items, eject, rpmBad) {
+        if (S.mode === "crash") return; S.mode = "crash"; cyc = null; wt = 0; const c = items.reduce((a, i) => a + i[1], 0); errs++; saved += c; pen += 15; redUntil = 1e18; cm.position.copy(probe.position); flash(); shake = .9; after = { eject, rpmBad };
+        if (eject) { scene.attach(wp); ej = { vx: 2.5, vy: 3.5, vz: 4.5 } }
+        log("¡COLISIÓN! " + msg + " Pérdida evitada: " + usd(c), "e"); ui();
+        mtm = setTimeout(() => modal(0, "⛔ PARADA DE EMERGENCIA POR COLISIÓN", msg, "-" + usd(c), "En la vida real: " + items.map(i => i[0] + " ($" + i[1] + ")").join(" + ") + ". Aquí no se perdió nada.", "Reconocer alarma y reintentar", ack), 1100)
+    }
+    // Finaliza el mecanizado con éxito y muestra el puntaje obtenido
+    function finish() {
+        S.mode = "done"; wt = 0; saved += 30; ui(); log("Ciclo completado sin colisiones.", "ok"); const sc = Math.max(0, 100 - pen);
+        modal(1, "✔ CICLO COMPLETADO", "Pieza desbastada a Ø52 mm × 120 mm. Cero Pieza, sujeción y RPM correctos.", sc + "%", "Puntaje final del alumno. Material y desgaste de inserto ahorrados: " + usd(30) + ".", "Nueva práctica", () => reset())
+    }
+
+    /* ---------- Acciones del protocolo ---------- */
+    // Paso 1: valida elementos obligatorios y rechaza elementos con riesgo de atrapamiento
+    $("bEpp").onclick = () => {
+        if (S.mode !== "idle" || S.epp) return; const cb = [...document.querySelectorAll("#s1 input")];
+        if (cb.some(i => i.dataset.ok === "0" && i.checked)) return danger("¡PELIGRO DE ATRAPAMIENTO! Guantes holgados, cadenas o anillos pueden arrastrar la mano al plato giratorio.", 2000);
+        const m = cb.filter(i => i.dataset.ok === "1" && !i.checked).length; if (m) return danger("EPP incompleto: faltan " + m + " elemento(s) obligatorio(s).", 800);
+        S.epp = true; cb.forEach(i => i.disabled = true); log("EPP validado: lentes, calzado dieléctrico y ropa ajustada.", "ok"); toast("EPP validado ✔", 1); ui()
+    };
+    // Paso 2a: anima la colocación de la barra de acero en el plato
+    $("bMount").onclick = () => {
+        if (S.mode !== "idle") return; if (!S.epp) return danger("¡PELIGRO! Montaje sin EPP validado: riesgo de aplastamiento de manos.", 150); if (S.mounted) return toast("La pieza ya está en el plato.", 1);
+        S.mode = "busy"; wp.visible = true; log("Colocando barra de acero Ø60 × 160 mm…", "i"); tween(1.5, p => { const e = ez(p); wp.position.set(6 * (1 - e), 1.2 * (1 - e), 0) }, () => { S.mounted = true; S.mode = "idle"; log("Pieza posicionada. Falta ajustar las mordazas.", "ok"); ui() })
+    };
+    // Paso 2b: cierra las 3 mordazas para sujetar la barra
+    $("bClamp").onclick = () => {
+        if (S.mode !== "idle") return; if (!S.epp) return danger("¡PELIGRO! Operación sobre el plato sin EPP validado.", 150); if (!S.mounted) return danger("No hay pieza en el plato: se saltó el paso de montaje.", 100); if (S.clamped) return;
+        S.mode = "busy"; tween(1, p => setJ(L(1.18, .93, ez(p))), () => { S.clamped = true; S.mode = "idle"; log("Mordazas ajustadas con el torque correcto.", "ok"); toast("Pieza sujeta correctamente", 1); ui() })
+    };
+    // Movimiento manual del carro (jog) con detección de choque en tiempo real
+    function jog() {
+        if (S.mode !== "idle") { sync(); return } T.x = +$("rx").value; T.z = +$("rz").value; apply();
+        if (hits()) { errs++; saved += 250; pen += 8; redUntil = performance.now() + 1600; cm.position.copy(probe.position); flash(); shake = .5; toast("⚠ ¡COLISIÓN DE CARRO! Inserto contra " + (T.x < 12 ? "contrapunto" : "pieza") + ": -$250 USD en la vida real"); log("Colisión de carro. Retorno automático a posición segura.", "e"); T.x = 55; apply() } ui()
+    }
+    $("rx").oninput = $("rz").oninput = jog;
+    // Paso 3a: fija el Cero Pieza (G54) si el inserto toca el borde frontal
+    $("bZero").onclick = () => {
+        if (S.mode !== "idle") return; if (!S.epp || !S.clamped) return danger("Fijar G54 sin EPP o sin pieza sujeta: se saltó un paso del protocolo.", 150);
+        if (!touch()) return danger("La herramienta no toca el borde (objetivo X≈30 mm, Z≈0). Un cero erróneo provoca colisión.", 250);
+        S.zero = { x: T.x, z: T.z }; zm.position.copy(probe.position); zm.visible = true; log("Cero Pieza G54 fijado en X" + T.x.toFixed(1) + " Z" + T.z.toFixed(1) + ".", "ok"); toast("Cero Pieza (G54) fijado ✔", 1); ui()
+    };
+    // Paso 3b: selecciona la velocidad de giro del husillo (RPM)
+    document.querySelectorAll("[data-r]").forEach(b => b.onclick = () => { if (S.mode !== "idle") return; if (!S.epp || !S.clamped) return danger("Parámetros antes de sujetar la pieza: se saltó un paso.", 100); S.rpm = +b.dataset.r; log("RPM programadas: " + S.rpm, "i"); ui() });
+    // Paso 4: verifica requisitos previos e inicia el ciclo automático
+    $("bGo").onclick = () => {
+        if (S.mode !== "idle") return; if (estop) return toast("⚠ E-STOP activo: libere el hongo rojo para operar.");
+        if (!S.epp) return danger("¡PELIGRO! Husillo encendido sin validar EPP: riesgo de atrapamiento y proyección de viruta.", 2000);
+        if (!S.clamped) return danger("¡PELIGRO! La pieza no está montada y sujeta: saldría disparada del plato.", 1200);
+        if (!S.rpm) return danger("Seleccione las RPM antes de encender el husillo.", 150);
+        cutR = .65; setCut(0); cyc = { ph: 0, t: 0, kind: !S.zero ? "nozero" : S.rpm !== 400 ? "rpm" : "ok", from: { ...T } }; S.mode = "cycle"; log("Ciclo iniciado a " + S.rpm + " RPM.", "i"); ui()
+    };
+
+    // Ejecuta paso a paso las fases del ciclo CNC (aproximación, penetración, desbaste y retirada)
+    function stepCycle(dt) {
+        const c = cyc; c.t += dt; const k = d => Math.min(1, c.t / d), z = S.zero, nx = () => { c.ph++; c.t = 0 }; wt = 5 * S.rpm / 400;
+        if (c.kind === "nozero") {
+            const p = k(1.6); T.x = L(c.from.x, 24, ez(p)); T.z = L(c.from.z, -30, ez(p)); apply(); sync();
+            if (hits() || p >= 1) {
+                if (c.novice) crash("Sin EPP, pieza sin sujetar, sin Cero Pieza y a 1200 RPM: el carro se lanza contra la pieza.", [["Inserto y cabezal", 250], ["Pieza proyectada y mordazas", 1200]], true);
+                else crash("Sin Cero Pieza (G54) el control usa un origen desconocido y el carro se lanza contra la pieza.", [["Inserto y cabezal", 250]])
+            } return
+        }
+        if (c.ph === 0) { const p = k(.7); T.x = L(c.from.x, z.x, ez(p)); T.z = L(c.from.z, z.z, ez(p)); if (p >= 1) nx() }
+        else if (c.ph === 1) { const p = k(.8); T.x = z.x - 4 * ez(p); if (p >= 1) { cutR = T.x / U; nx() } }
+        else if (c.ph === 2) {
+            const p = k(6); T.z = z.z - 120 * p; setCut(Math.max(0, -T.z / U)); chip(dt);
+            if (c.kind === "rpm" && p > .12) { apply(); return S.rpm === 800 ? crash("800 RPM exceden la velocidad de corte para Ø60 mm: vibración y rotura del inserto.", [["Inserto y portaherramienta", 450]], false, true) : crash("1200 RPM con Ø60 mm: la fuerza centrífuga y la vibración sueltan la pieza del plato.", [["Pieza proyectada y mordazas", 1200], ["Inserto y cabezal", 250]], true, true) }
+            if (p >= 1) { c.zEnd = T.z; nx() }
+        }
+        else if (c.ph === 3) { const p = k(.8); T.x = L(cutR * U, 55, ez(p)); if (p >= 1) nx() }
+        else { const p = k(1); T.z = L(c.zEnd, 60, ez(p)); if (p >= 1) { apply(); sync(); return finish() } }
+        apply(); sync()
+    }
+
+    // Botón E-STOP (detiene o libera la máquina), reinicio y simulación de error de novato
+    $("estop").onclick = () => {
+        if (estop) { estop = false; $("estop").classList.remove("on"); if (S.mode === "estop") { S.mode = "idle"; T = { x: 55, z: 60 }; apply() } log("E-STOP liberado.", "i"); toast("E-STOP liberado: máquina lista", 1); ui(); return }
+        if (S.mode === "cycle") { S.mode = "estop"; cyc = null; wt = 0 } else if (S.mode !== "idle") return;
+        estop = true; $("estop").classList.add("on"); log("PARADA DE EMERGENCIA accionada.", "e"); toast("⚠ PARADA DE EMERGENCIA activa"); ui()
+    };
+    $("bReset").onclick = reset;
+    $("bNov").onclick = () => {
+        reset(); S.mode = "busy"; log("DEMO: alumno novato omite todo el protocolo.", "e"); toast("Alumno novato: sin EPP, sin sujetar la pieza, sin cero y a 1200 RPM"); wp.visible = true;
+        tween(1.4, p => { const e = ez(p); wp.position.set(6 * (1 - e), 1.2 * (1 - e), 0) }, () => { S.mounted = true; S.rpm = 1200; ui(); log("El novato elige 1200 RPM y enciende el husillo.", "e"); cyc = { ph: 0, t: 0, kind: "nozero", novice: 1, from: { ...T } }; S.mode = "cycle" })
+    };
+
+    /* ---------- Bucle ---------- */
+    // Adapta el lienzo 3D al tamaño del contenedor
+    function rs() { const a = view.clientWidth, b = view.clientHeight; if (!a || !b) return; renderer.setSize(a, b, false); cam.aspect = a / b; cam.updateProjectionMatrix() }
+    new ResizeObserver(rs).observe(view); rs();
+    const stn = { idle: "LISTO", busy: "MOVIENDO", cycle: "EN CICLO", crash: "ALARMA", done: "FIN DE CICLO", estop: "E-STOP" };
+    let last = performance.now();
+    // Bucle principal de animación: tweens, física de giro/virutas, HUD y renderizado
+    function loop(now) {
+        requestAnimationFrame(loop); const dt = Math.min(.05, (now - last) / 1000); last = now;
+        tw = tw.filter(a => { a.t += dt; const p = Math.min(1, a.t / a.d); a.f(p); if (p >= 1) { a.e && a.e(); return false } return true });
+        if (cyc && S.mode === "cycle") stepCycle(dt);
+        w += (wt - w) * Math.min(1, dt * (S.mode === "crash" ? 9 : 2.5)); sp.rotation.x -= w * dt;
+        if (ej) { ej.vy -= 9 * dt; wp.position.x += ej.vx * dt; wp.position.y += ej.vy * dt; wp.position.z += ej.vz * dt; wp.rotation.z += dt * 3; if (wp.position.y < .75) { wp.position.y = .75; ej.vy *= -.3; ej.vx *= .8; ej.vz *= .8 } }
+        chips(dt); const cutting = S.mode === "cycle" && cyc && cyc.ph === 2;
+        if (cutting) { lamp.position.set(probe.position.x, AY + .3, probe.position.z + .3); lamp.intensity = 1.5 + Math.random() * 2.5 } else lamp.intensity = 0;
+        halo.scale.setScalar(1 + .15 * Math.sin(now / 200));
+        const red = now < redUntil; cm.visible = red; if (red) { cm.position.y = AY; cm.scale.setScalar(1 + .3 * Math.sin(now / 60)); redL.position.copy(cm.position); redL.intensity = 3 + 2 * Math.sin(now / 50) } else redL.intensity = 0;
+        probe.material.color.setHex(red ? 0xff3b30 : touch() ? 0x2ee66b : 0xffc400);
+        $("hud").textContent = "X " + T.x.toFixed(1) + "   Z " + T.z.toFixed(1) + "\nHUSILLO " + Math.round(w / 5 * 400) + " RPM\nG54 " + (S.zero ? "X" + S.zero.x.toFixed(1) + " Z" + S.zero.z.toFixed(1) : "sin fijar") + "\nESTADO " + (stn[S.mode] || "BLOQUEADO") + (estop ? " · E-STOP" : "");
+        ctl.update(); let o = null; if (shake > 0) { shake -= dt; cam.position.add(o = new THREE.Vector3((Math.random() - .5) * .25, (Math.random() - .5) * .25, (Math.random() - .5) * .25)) }
+        renderer.render(scene, cam); if (o) cam.position.sub(o)
+    }
+    reset(); requestAnimationFrame(loop);
+})();

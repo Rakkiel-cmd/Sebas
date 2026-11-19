@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <!-- Metadatos básicos y hoja de estilos principal -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Pre-Lab Metalmecánico 3D · Set-up y Seguridad en Torno CNC</title>
+    <link rel="stylesheet" href="../css/styles.css">
+</head>
+
+<body>
+    <div class="app">
+        <!-- Barra superior: título, indicadores de desempeño (KPIs) y parada de emergencia -->
+        <header>
+            <h1>Pre-Lab Metalmecánico 3D<small>Módulo de puesta a punto y seguridad · Torno CNC</small></h1>
+            <div class="kpis">
+                <div class="kpi"><span>Puntaje del alumno</span><b id="k1">0%</b>
+                    <div class="bar"><i id="kb"></i></div>
+                </div>
+                <div class="kpi"><span>Errores críticos evitados</span><b id="k2">0</b></div>
+                <div class="kpi"><span>Ahorro estimado en insumos</span><b id="k3">$0 USD</b></div>
+            </div>
+            <button id="estop" title="Parada de emergencia">E-STOP</button>
+        </header>
+
+        <main>
+            <!-- Panel lateral izquierdo: pasos guiados del protocolo CNC -->
+            <aside>
+                <!-- Paso 1: Verificación de Equipo de Protección Personal -->
+                <div class="step" id="s1">
+                    <h3><span class="n">1</span>Protocolo SST / EPP<em></em></h3>
+                    <label class="chk"><input type="checkbox" data-ok="1">Lentes de seguridad</label>
+                    <label class="chk"><input type="checkbox" data-ok="1">Zapatos dieléctricos de seguridad</label>
+                    <label class="chk"><input type="checkbox" data-ok="1">Ropa ajustada, mangas abotonadas</label>
+                    <label class="chk"><input type="checkbox" data-ok="0">Guantes holgados de tela</label>
+                    <label class="chk"><input type="checkbox" data-ok="0">Cadena, anillo o reloj colgante</label>
+                    <button class="btn pri" id="bEpp">Validar EPP</button>
+                </div>
+
+                <!-- Paso 2: Montaje de barra de acero y apriete de mordazas -->
+                <div class="step" id="s2">
+                    <h3><span class="n">2</span>Montaje y sujeción<em></em></h3>
+                    <button class="btn" id="bMount">Colocar pieza de acero</button><button class="btn"
+                        id="bClamp">Ajustar mordazas</button>
+                    <div class="mu">Barra de acero Ø60 × 160 mm en plato universal de 3 mordazas.</div>
+                </div>
+
+                <!-- Paso 3: Posicionamiento manual (X/Z), Cero Pieza (G54) y selección de RPM -->
+                <div class="step" id="s3">
+                    <h3><span class="n">3</span>Parámetros y Cero Pieza<em></em></h3>
+                    <div class="row"><label>Eje X (radial): <b id="vx">55.0</b> mm</label><input type="range" id="rx"
+                            min="0" max="70" step="0.5" value="55"></div>
+                    <div class="row"><label>Eje Z (axial): <b id="vz">60.0</b> mm</label><input type="range" id="rz"
+                            min="-20" max="100" step="0.5" value="60"></div>
+                    <div id="tc">○ sin contacto</div>
+                    <button class="btn cyb" id="bZero">Fijar Cero Pieza (G54)</button>
+                    <div class="mu">Toque la esquina del borde: X = radio de la pieza, Z = cara frontal.</div>
+                    <div class="row" style="margin-top:8px"><label>Velocidad del husillo (Vc ≈ 80 m/min, n = 1000·Vc /
+                            π·D)</label></div>
+                    <button class="btn" data-r="400">400 RPM</button><button class="btn" data-r="800">800
+                        RPM</button><button class="btn" data-r="1200">1200 RPM</button>
+                </div>
+
+                <!-- Paso 4: Ejecución del ciclo de desbaste -->
+                <div class="step" id="s4">
+                    <h3><span class="n">4</span>Prueba de mecanizado seguro<em></em></h3>
+                    <button class="btn pri" id="bGo">▶ Iniciar ciclo / Encender husillo</button>
+                    <div class="mu">Desbaste de 4 mm de profundidad × 120 mm de largo.</div>
+                </div>
+            </aside>
+
+            <!-- Escenario principal: visor 3D, telemetría, alertas y barra inferior -->
+            <section class="stage">
+                <div class="view" id="view">
+                    <!-- HUD con coordenadas en vivo, notificaciones y destello de colisión -->
+                    <div class="hud" id="hud"></div>
+                    <div id="toast"></div>
+                    <div id="flash"></div>
+                    <!-- Modal superpuesto para resultados finales o alarmas de colisión -->
+                    <div class="ov" id="ov">
+                        <div class="card" id="card">
+                            <h2 id="mt"></h2>
+                            <p id="mb"></p>
+                            <div class="cost" id="mc"></div>
+                            <p class="mu" id="mx"></p><button class="btn pri" id="mbtn"></button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pie de página: botones de reinicio/demo y consola de eventos -->
+                <div class="foot"><button class="btn" id="bReset">↻ Reiniciar simulación</button><button
+                        class="btn warn" id="bNov">☠ Simular error de novato</button>
+                    <div class="log" id="log"></div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Dependencias 3D (Three.js + OrbitControls) y script principal -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="../js/main.js"></script>
+</body>
+
+</html>
